@@ -1,0 +1,145 @@
+library(DBI)
+library(RMySQL)
+
+con <- dbConnect(MySQL(),dbname="getfun", host="localhost", user="root", password="root")
+dbSendQuery(con,'SET NAMES gbk')
+
+#ad_company <- read.xlsx("D:/1importdata/ad2.xlsx", header = TRUE, sheetIndex = 1, encoding = "utf8") #没有成功，excel编码不对
+#ad_company <- read.csv("D:/1importdata/ad2.csv", header = TRUE)
+#options(scipen = 200)
+#con <- dbConnect(MySQL(),host="localhost",dbname="getfun",user="root",password="root")
+#dbWriteTable(con,"company_information",asdf,row.names=F,append = TRUE)
+#a <- iconv(ad_company$company,from="gbk",to="utf-8")
+#b <- iconv(ad_company$company_address,from="gbk",to="utf-8")
+#c <- iconv(ad_company$bank,from="gbk",to="utf-8")
+#asdf <- data.frame(ad_company$ID, a, b, ad_company$duty_paragraph, ad_company$bank_account, c, ad_company$company_tel)
+#names(asdf) <- c("id", "company","company_address", "duty_paragraph", "bank_account", "bank", "company_tel")
+#qwe <- dbSendQuery(con,"SELECT * FROM getfun.company_information where id = 1;")
+#ty <- dbFetch(qwe, n=1)
+
+
+#导入数据
+channel_traffic = read.csv("D:/1importdata/07/channel_traffic0708.csv",  header = TRUE)
+View(channel_traffic)
+dbWriteTable(con, "channel_traffic", channel_traffic, row.names=F, append=TRUE)
+
+income = read.csv("D:/1importdata/07/income.csv",  header = TRUE)
+View(income)
+dbWriteTable(con, "income", income, row.names=F, append=TRUE)
+
+dd <- data.frame(date = "2018-07-09")
+ad_position = read.csv("D:/1importdata/07/ad_position0709.csv",  header = TRUE)
+ad_position <- cbind.data.frame(dd, ad_position)
+View(ad_position)
+dbWriteTable(con, "ad_position", ad_position, row.names=F, append=TRUE)
+
+dd <- data.frame(date = "2018-07-07")
+income = read.csv("D:/1importdata/07/网盟推广合作网页版报告07-07.csv",  header = TRUE)
+income <- cbind.data.frame(dd, income)
+View(income)
+dbWriteTable(con, "income", income, row.names=F, append=TRUE)
+
+#b <- dbReadTable(con, "company_information2")
+#流量数据统计
+channel_traffic <- trafficimport(visitpage=("D:/1importdata/07/受访页面0714.csv"), 
+                                 landingpagedata=("D:/1importdata/07/入口页面0714.csv"),
+                                 importdate=("2018-07-14"))
+View(channel_traffic)
+write.csv(channel_traffic, file = "C:/Users/Administrator/Desktop/流量0714.csv", na = "")
+
+dbWriteTable(con, "channel_traffic", channel_traffic, row.names=F, append=TRUE)
+
+dbDisconnect(con)
+
+#受访页面
+trafficimport <- function(visitpage, landingpagedata,importdate){
+  traffic <- read.csv(visitpage,  header = TRUE)
+  sum_time <- traffic$pv*as.numeric(traffic$visittime)
+  traffic <- data.frame(url = traffic$url, pv = traffic$pv, uv = traffic$uv,landingpage = traffic$landingpage, 
+                    exitpage = traffic$exitpage, visittime = traffic$visittime, sum_time)
+  channel_id <- c("mingzhan", "mingzhan", "jinlilockscreen", "jinlilockscreen", "jinlilockscreen", 
+                  "91lockscreen", "91lockscreen", "jinliweather-regimen", "jinlibrowser-regimen",
+                   "jinlibrowser-fun", "jinlishopping", "jinlicolumn", "jinlicolumn", 
+                  "cncalendar", "sougoubrowser", "qqbrowser", "qqbrowser", "fengyunbrowser", "fengyunbrowser",
+                  "worldcup", "worldcup", "taonews")
+  channel <- c("阿里云名站", "阿里云名站", "金立锁屏娱乐", "金立锁屏娱乐", "金立锁屏娱乐", 
+               "91锁屏", "91锁屏", "金立天气-养生","金立浏览器-养生",
+               "金立浏览器-搞笑", "金立购物", "金立专栏", "金立专栏", "中华万年历", "搜狗浏览器", 
+               "QQ浏览器", "QQ浏览器", "风云浏览器", "风云浏览器", "世界杯", "世界杯", "淘新闻")
+  keywords <- c("mingzhan/articleList", "mingzhan/[0-9]{7}", "vendor=jinlisuoping", "Second", "articleList/jinlisuoping",
+                "91suoping/[0-9]{2,3}$", "91suoping/[0-9]{2,3}/[0-9]{7}", "jinliYangsheng/87", "jinliBrowserYangsheng", "jinliBrowserGaoxiao", "jinligouwu",  
+                 "net/dome/[0-9]{3}$", "net/dome/[0-9]{3}/[0-9]+", "chinaCalendar", "typeA/sougou", 
+                "qqBrowser/articleList/23", "qqBrowser/[0-9]{7}", "fengyunBrowser/articleList/23", "fengyunBrowser/[0-9]{7}",
+                "net/WorldCup$", "WorldCup/content", "taoxinwen/147/[0-9]{7}.page=1")
+  page <- c("feed", "detail", "detail", "second", "feed", "feed", "detail",
+            "detail", "detail", "detail", "detail", "feed", "detail", "detail", "detail", "feed", "detail", "feed", 
+            "detail", "feed", "detail", "detail")
+  m = 0
+  PV <- c()
+  UV <- c()
+  landingpage <- c()
+  exitpage <- c()
+  visittime <- c()
+  date <- rep(importdate, length(channel_id)) #Sys.Date()-1
+  for (n in keywords){
+    list <- grep(n, traffic$url)
+    list <- traffic[list,,]
+    PV <- c(PV[1:m], sum(list$pv))
+    UV <- c(UV[1:m], sum(list$uv))
+    landingpage <- c(landingpage[1:m], sum(list$landingpage))
+    exitpage <- c(exitpage[1:m], sum(list$exitpage))
+    time_m = floor(round(sum(list$sum_time)/sum(list$pv))/60)
+    if(is.na(time_m)){
+      time_m = "0"
+    }else{
+      time_m = time_m
+    }
+    time_s = round(sum(list$sum_time)/sum(list$pv))%%60
+    if(is.na(time_s)){
+      time_s = 0
+    }else{
+      time_s = time_s
+    }
+    if(time_s < 10){
+      time_s <- paste(0, time_s, sep = "")
+    }else{
+      time_s = time_s
+    }
+    v_time = paste(time_m, ":", time_s, sep = "")
+    visittime <- c(visittime[1:m],v_time)
+    m = m + 1
+  }
+  
+  #入口页面
+  landingtraffic <- read.csv(landingpagedata,  header = TRUE)
+  keywords <- c("mingzhan/articleList/23$", "空", "vendor=jinlisuoping", "空", "空", 
+                "91suoping/179", "空", "jinliYangsheng/87", "jinliBrowserYangsheng", "jinliBrowserGaoxiao", 
+                "jinligouwu", "net/dome/[0-9]{3}$", "net/dome/[0-9]{3}/[0-9]+", "chinaCalendar", "typeA/sougou",
+                "qqBrowser/articleList/23", "空", "fengyunBrowser/articleList/23", "空", "net/WorldCup$", "空", 
+                "taoxinwen/147/[0-9]{7}.page=1")
+  m = 0
+  settlementPV <- c()
+  settlementUV <- c()
+  for (w in keywords){
+    list <- grep(w, landingtraffic$url)
+    list <- landingtraffic[list,,]
+    settlementPV <- c(settlementPV[1:m], sum(list$pv))
+    settlementUV <- c(settlementUV[1:m], sum(list$uv))
+    m = m + 1
+  }
+  
+  
+  channel_traffic <- data.frame(channel, channel_id, PV, UV, page, date,  settlementPV, 
+                                settlementUV, landingpage, exitpage, visittime)
+  return(channel_traffic)
+}
+
+
+
+
+
+
+
+
+
+
